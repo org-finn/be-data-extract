@@ -1,0 +1,57 @@
+[project]
+name = "finn-python-server"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "anacnoda77",email = "sm1108shin@naver.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "keyring (>=25.6.0,<26.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "tiingo (>=0.16.1,<0.17.0)",
+    "finnhub-python (>=2.4.23,<3.0.0)",
+    "feedparser (>=6.0.11,<7.0.0)",
+    "webdriver-manager (>=4.0.2,<5.0.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "selenium (>=4.32.0,<5.0.0)",
+    "transformers (>=4.51.3,<5.0.0)",
+    "torch (>=2.7.0,<3.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "finn_python_server", from = "src"}]
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+flake8 = "^7.2.0"
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+# 아래 섹션은 flake8의 설정
+[tool.flake8]
+ignore = "E203, E501, W503"
+max-line-length = 88
+exclude = ".git,__pycache__,docs/,old/,build/,dist/"
