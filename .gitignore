@@ -251,4 +251,8 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# env file
+.env
+.env.dev
+
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows,visualstudiocode

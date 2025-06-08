@@ -1,30 +1,110 @@
-import keyring
+import os
 from tiingo import TiingoClient
 import pandas as pd
+from supabase import create_client, Client
 from pandas import DataFrame as df
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-def get_stock_datas():
-    api_key = keyring.get_password('System', 'anaconda77_tiingo')
-    keyring.set_password('tiingo', 'anaconda77_tiingo', api_key)
+def get_stock_from_db(supabase):
+    try:
+        response = supabase.table('stocks').select('stock_id, stock_code').execute()
+        stocks_to_fetch = response.data
 
-    config = {}
-    config['session'] = True
-    config['api_key'] = api_key
-    client = TiingoClient(config)
+        if not stocks_to_fetch:
+            raise ValueError("'stocks' 테이블에 조회할 주식이 없습니다. 먼저 주식 정보를 등록해주세요.")
+    except Exception as e:
+        error_message = f"데이터 조회 중단: {e}"
+        print(error_message) # CloudWatch 로그에 기록하기 위함
+    
+    return stocks_to_fetch
 
-
-    # tesla_ticker_metadata = client.get_ticker_metadata('TSLA')
-    # print(ticker_metadata)
+def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end_date):
+    all_prices_to_insert = []
+    
+    start_date = start_date.strftime('%Y-%m-%d')
+    end_date = end_date.strftime('%Y-%m-%d')
     
     # 핵심 부분: 주가 데이터 받아오는 코드
-    tsla_prices = client.get_dataframe('TSLA',
-                                     startDate='2024-01-01',
-                                     endDate='2024-12-31',
-                                     frequency='daily')
-    
-    # column명 없이 받아오려면 뒤에 header=False 추가
-    tsla_prices.to_csv('~/Downloads/tsla_prices_train.csv')
+    for stock in stocks_to_fetch:
+        stock_id = stock['stock_id']
+        stock_code = stock['stock_code']
+        
+        try:
+            price_df = tiingo_client.get_dataframe(
+                stock_code,
+                startDate=start_date,
+                endDate=end_date,
+                frequency='daily'
+            )
 
-get_stock_datas()
+            if price_df.empty:
+                print(f"'{stock_code}'에 대한 데이터를 가져오지 못했습니다. 건너뜁니다.")
+                continue
+            
+            price_df.reset_index(inplace=True) # date가 인덱스일경우, column으로 변경
+            
+            price_df['stock_id'] = stock_id
+            price_df['change_rate'] = 0.0 # 일단 null 값으로 설정
+            
+            price_df.rename(columns={
+                'date': 'price_date',
+                'adjOpen': 'open_price',
+                'adjHigh': 'high_price',
+                'adjLow': 'low_price',
+                'adjClose': 'close_price'
+                # 'volume'은 이름이 동일하므로 변경 필요 없음
+            }, inplace=True)
+            
+            price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
+            required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'volume']
+            processed_df = price_df[required_columns]
+
+            # DataFrame을 삽입 가능한 dict 리스트로 변환하여 전체 리스트에 추가
+            all_prices_to_insert.extend(processed_df.to_dict(orient='records'))
+        
+        except Exception as e:
+            print(f"'{stock_code}' 처리 중 오류 발생: {e}")
+            continue
+    
+    return all_prices_to_insert
+
+def save_stock_prices_in_db(all_prices_to_insert, supabase):
+    if not all_prices_to_insert:
+        return {'statusCode': 200, 'body': 'DB에 저장할 새로운 주가 데이터가 없습니다.'}
+        
+    try:
+        # upsert: (stock_id, price_date)가 중복되면 업데이트, 없으면 삽입
+        supabase.table('stock_prices').upsert(
+            all_prices_to_insert,
+            on_conflict='stock_id, price_date' # 중복 검사 기준이 되는 복합키
+        )
+        print(f"Supabase 저장 완료: {len(all_prices_to_insert)}개 레코드 처리")
+        
+    except Exception as e:
+        print(f"Supabase 저장 중 오류 발생: {e}")
+    
+
+def main():
+    load_dotenv()
+    
+    tiingo_api_key = os.environ.get('TIINGO_API_KEY')
+    supabase_url = os.environ.get('SUPABASE_URL')
+    supabase_api_key = os.environ.get('SUPABASE_KEY')
+
+    tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
+    supabase: Client = create_client(supabase_url, supabase_api_key)
+    
+    stocks_to_fetch = get_stock_from_db(supabase)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=7)
+    
+    if stocks_to_fetch:
+        all_prices_to_insert = stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end_date)
+
+        if all_prices_to_insert:
+            save_stock_prices_in_db(all_prices_to_insert, supabase)
+
+main()
     
     
