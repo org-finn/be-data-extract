@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 def get_stock_from_db(supabase):
     try:
-        response = supabase.table('stocks').select('stock_id, stock_code').execute()
+        response = supabase.table('stocks').select('id, stock_code').execute()
         stocks_to_fetch = response.data
 
         if not stocks_to_fetch:
@@ -27,7 +27,7 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
     
     # 핵심 부분: 주가 데이터 받아오는 코드
     for stock in stocks_to_fetch:
-        stock_id = stock['stock_id']
+        stock_id = stock['id']
         stock_code = stock['stock_code']
         
         try:
@@ -45,7 +45,7 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
             price_df.reset_index(inplace=True) # date가 인덱스일경우, column으로 변경
             
             price_df['stock_id'] = stock_id
-            price_df['change_rate'] = 0.0 # 일단 null 값으로 설정
+            price_df['change_rate'] = 0.0 # TODO: 이전 날짜 비교해서 등락률 구하는 로직 구현 예정
             
             price_df.rename(columns={
                 'date': 'price_date',
@@ -56,8 +56,13 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
                 # 'volume'은 이름이 동일하므로 변경 필요 없음
             }, inplace=True)
             
+            # NUMERIC(7, 4) 제약 조건에 맞게 가격 관련 컬럼들을 소수점 4자리로 반올림합니다.
+            numeric_columns = ['change_rate', 'open_price', 'high_price', 'low_price', 'close_price']
+            for col in numeric_columns:
+                price_df[col] = price_df[col].round(4)
+            
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
-            required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'volume']
+            required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'change_rate', 'volume']
             processed_df = price_df[required_columns]
 
             # DataFrame을 삽입 가능한 dict 리스트로 변환하여 전체 리스트에 추가
@@ -70,17 +75,25 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
     return all_prices_to_insert
 
 def save_stock_prices_in_db(all_prices_to_insert, supabase):
-    if not all_prices_to_insert:
-        return {'statusCode': 200, 'body': 'DB에 저장할 새로운 주가 데이터가 없습니다.'}
         
     try:
         # upsert: (stock_id, price_date)가 중복되면 업데이트, 없으면 삽입
-        supabase.table('stock_prices').upsert(
-            all_prices_to_insert,
-            on_conflict='stock_id, price_date' # 중복 검사 기준이 되는 복합키
+        response = (
+            supabase.table('stock_prices')
+            .upsert(all_prices_to_insert, 
+                on_conflict='stock_id, price_date',  # 중복 검사 기준이 되는 복합키
+            )
+            .execute()
         )
-        print(f"Supabase 저장 완료: {len(all_prices_to_insert)}개 레코드 처리")
+
+        # 실제 데이터가 처리되었는지 확인
+        # RLS 정책 등에 의해 아무 작업도 수행되지 않았지만 에러는 없는 경우를 대비
+        if not response.data:
+            raise Exception("Supabase에 데이터가 저장되지 않았지만, 명시적인 에러는 없습니다. RLS 정책 등을 확인하세요.")
         
+        # 모든 확인을 통과하면 성공으로 간주
+        success_count = len(response.data)
+        print(f"Supabase 저장 성공: {success_count}개 레코드 처리")
     except Exception as e:
         print(f"Supabase 저장 중 오류 발생: {e}")
     
