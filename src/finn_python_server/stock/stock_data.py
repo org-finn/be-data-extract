@@ -2,7 +2,6 @@ import os
 from tiingo import TiingoClient
 import pandas as pd
 from supabase import create_client, Client
-from pandas import DataFrame as df
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
