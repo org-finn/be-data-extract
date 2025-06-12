@@ -51,17 +51,18 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
                 'adjOpen': 'open_price',
                 'adjHigh': 'high_price',
                 'adjLow': 'low_price',
-                'adjClose': 'close_price'
+                'close': 'close_price',
+                'adjClose' : 'adj_close_price',
                 # 'volume'은 이름이 동일하므로 변경 필요 없음
             }, inplace=True)
             
             # NUMERIC(7, 4) 제약 조건에 맞게 가격 관련 컬럼들을 소수점 4자리로 반올림합니다.
-            numeric_columns = ['change_rate', 'open_price', 'high_price', 'low_price', 'close_price']
+            numeric_columns = ['change_rate', 'open_price', 'high_price', 'low_price', 'close_price', 'adj_close_price']
             for col in numeric_columns:
                 price_df[col] = price_df[col].round(4)
             
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
-            required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'change_rate', 'volume']
+            required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'adj_close_price', 'change_rate', 'volume']
             processed_df = price_df[required_columns]
 
             # DataFrame을 삽입 가능한 dict 리스트로 변환하여 전체 리스트에 추가
@@ -109,7 +110,7 @@ def main():
     
     stocks_to_fetch = get_stock_from_db(supabase)
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=7)
+    start_date = end_date - timedelta(days=1)
     
     if stocks_to_fetch:
         all_prices_to_insert = stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end_date)

@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from tqdm.asyncio import tqdm 
+import asyncio 
+import aiohttp 
 
 def get_stock_from_db(supabase):
     try:
@@ -27,27 +30,37 @@ def generate_google_rss_url(query, start_date, end_date):
 def adjust_title_by_length_limit(title):
     return (title[:97] + '...') if len(title) > 100 else title
 
-def fetch_news_rss_day(query, stock_id, day: datetime):
+async def fetch_news_rss_day_async(session, query, stock_id, day: datetime, limit: int = 30):
     start_date = day.strftime("%Y-%m-%d")
     end_date = (day + timedelta(days=1)).strftime("%Y-%m-%d")
     url = generate_google_rss_url(query, start_date, end_date)
-    feed = feedparser.parse(url)
-
+    
     items = []
-    for entry in feed.entries:
-        try:
-            pub_date = datetime(*entry.published_parsed[:6])
-        except Exception:
-            continue
-        items.append({
-            "created_date": pub_date.strftime("%Y-%m-%d"),
-            "title": adjust_title_by_length_limit(entry.title),
-            "original_url": entry.link,
-            "company_name" : query,
-            "view_count" : 0,
-            "like_count" : 0,
-            "stock_id" : stock_id
-        })
+    try:
+        async with session.get(url, timeout=10) as response:
+            if response.status != 200:
+                return [] # 응답 실패 시 빈 리스트 반환
+            
+            feed_text = await response.text()
+            feed = feedparser.parse(feed_text)
+
+            for entry in feed.entries[:limit]:
+                try:
+                    pub_date = datetime(*entry.published_parsed[:6])
+                except Exception:
+                    continue
+                items.append({
+                    "created_date": pub_date.strftime("%Y-%m-%d"),
+                    "title": adjust_title_by_length_limit(entry.title),
+                    "original_url": entry.link,
+                    "company_name" : query,
+                    "view_count" : 0,
+                    "like_count" : 0,
+                    "stock_id" : stock_id
+                })
+    except Exception as e:
+        # print(f"Error fetching {query} on {start_date}: {e}") # 디버깅 시 사용
+        pass # 개별 요청 실패 시 무시하고 계속 진행
 
     return items
 
@@ -63,20 +76,28 @@ def remove_duplicate_titles_by_prefix(all_news, prefix_length=50):
 
     return keep_rows
 
-def get_news_data(fetch_from_stocks, start_day, end_day):
-    all_news = []
-    
-    for stock in fetch_from_stocks:
-        query = stock['search_keyword']
-        stock_id = stock['id']
+async def get_news_data_async(fetch_from_stocks, start_day, end_day):
+    """[asyncio] 모든 뉴스 수집 작업을 비동기적으로 동시에 실행합니다."""
+    tasks = []
+    async with aiohttp.ClientSession() as session:
+        for stock in fetch_from_stocks:
+            query = stock['search_keyword']
+            stock_id = stock['id']
+            
+            total_days = (end_day - start_day).days + 1
+            for i in range(total_days):
+                current_day = start_day + timedelta(days=i)
+                # 각 날짜와 주식에 대한 비동기 작업을 생성하여 리스트에 추가
+                task = fetch_news_rss_day_async(session, query, stock_id, current_day)
+                tasks.append(task)
         
-        current_day = start_day
+        # tqdm.gather를 사용하여 모든 작업을 동시에 실행하고 진행 상황을 표시
+        results = await tqdm.gather(*tasks, desc="뉴스 동시 수집 중")
 
-        while current_day <= end_day:
-            daily_news = fetch_news_rss_day(query, stock_id, current_day)
-            all_news.extend(daily_news)
-            current_day += timedelta(days=1)
+    # 결과는 리스트의 리스트 형태이므로, 하나의 리스트로 펼쳐줍니다.
+    all_news = [item for sublist in results for item in sublist]
     
+    print("중복 제거 작업 진행 중...")
     all_news = remove_duplicate_titles_by_prefix(all_news, prefix_length=50)
     
     return all_news
@@ -102,7 +123,7 @@ def save_news_in_db(all_news, supabase):
         print(f"Supabase 저장 중 오류 발생: {e}")
         
 
-def main():
+async def main():
     load_dotenv()
     
     supabase_url = os.environ.get('SUPABASE_URL')
@@ -110,16 +131,19 @@ def main():
     
     supabase: Client = create_client(supabase_url, supabase_api_key)
     fetch_from_stocks = get_stock_from_db(supabase)
+    if not fetch_from_stocks:
+        return
     
     end_day = datetime.now()
-    start_day = end_day
+    start_day = end_day - timedelta(days=13)
     
-    all_news = get_news_data(fetch_from_stocks, start_day, end_day)
+    all_news = await get_news_data_async(fetch_from_stocks, start_day, end_day)
     
     if all_news:
         save_news_in_db(all_news, supabase)
     
-main()
+if __name__ == "__main__":
+    asyncio.run(main())
 
 
 # DB 용량 우려로 추후에 하루당 뉴스 기사 개수를 제한하고 싶으면 사용
