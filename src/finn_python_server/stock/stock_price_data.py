@@ -4,6 +4,7 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 def get_stock_from_db(supabase):
     try:
@@ -25,7 +26,7 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
     end_date = end_date.strftime('%Y-%m-%d')
     
     # 핵심 부분: 주가 데이터 받아오는 코드
-    for stock in stocks_to_fetch:
+    for stock in tqdm(stocks_to_fetch, desc="주가 데이터 수집 중"):
         stock_id = stock['id']
         stock_code = stock['stock_code']
         
@@ -69,7 +70,7 @@ def stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end
             all_prices_to_insert.extend(processed_df.to_dict(orient='records'))
         
         except Exception as e:
-            print(f"'{stock_code}' 처리 중 오류 발생: {e}")
+            tqdm.write(f"'{stock_code}' 처리 중 오류 발생: {e}")
             continue
     
     return all_prices_to_insert
