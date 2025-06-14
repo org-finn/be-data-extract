@@ -111,7 +111,7 @@ def main():
     
     stocks_to_fetch = get_stock_from_db(supabase)
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=1)
+    start_date = end_date - timedelta(days=30)
     
     if stocks_to_fetch:
         all_prices_to_insert = stock_price_data_from_tiingo(tiingo_client, stocks_to_fetch, start_date, end_date)

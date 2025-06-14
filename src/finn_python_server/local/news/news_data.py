@@ -135,7 +135,7 @@ async def main():
         return
     
     end_day = datetime.now()
-    start_day = end_day - timedelta(days=13)
+    start_day = end_day - timedelta(days=30)
     
     all_news = await get_news_data_async(fetch_from_stocks, start_day, end_day)
     
