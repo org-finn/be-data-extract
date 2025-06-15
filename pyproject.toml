@@ -19,7 +19,8 @@ dependencies = [
     "transformers (>=4.51.3,<5.0.0)",
     "torch (>=2.7.0,<3.0.0)",
     "supabase[all] (>=2.15.2,<3.0.0)",
-    "aiohttp (>=3.12.12,<4.0.0)"
+    "aiohttp (>=3.12.12,<4.0.0)",
+    "fdk (>=0.1.93,<0.2.0)"
 ]
 
 [tool.poetry]

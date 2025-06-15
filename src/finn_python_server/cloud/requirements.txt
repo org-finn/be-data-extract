@@ -1,0 +1,4 @@
+fdk
+pandas
+tiingo
+supabase
