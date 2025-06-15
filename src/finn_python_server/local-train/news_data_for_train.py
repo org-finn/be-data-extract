@@ -18,36 +18,57 @@ def generate_google_rss_url(query, start_date, end_date):
 def adjust_title_by_length_limit(title):
     return (title[:97] + '...') if len(title) > 100 else title
 
-async def fetch_news_rss_day_async(session, query, day: datetime, limit: int = 30):
-    
-    start_date = day.strftime("%Y-%m-%d")
-    end_date = (day + timedelta(days=1)).strftime("%Y-%m-%d")
-    url = generate_google_rss_url(query, start_date, end_date)
+async def fetch_news_rss_day_async(session, query, day: datetime, semaphore, limit: int = 30):
+    async with semaphore:
+        # await asyncio.sleep(0.5)
+        start_date = day.strftime("%Y-%m-%d")
+        end_date = (day + timedelta(days=1)).strftime("%Y-%m-%d")
+        url = generate_google_rss_url(query, start_date, end_date)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        try:
+            async with session.get(url, timeout=20, headers=headers) as response:
+                if response.status != 200:
+                    print(f"Error fetching {query} on {start_date}: {response.status}")
+                    exit
+                feed_text = await response.text()
+                feed = feedparser.parse(feed_text)
+                items = []
+                for entry in feed.entries[:limit]:
+                    try:
+                        pub_date = datetime(*entry.published_parsed[:6])
+                        items.append({
+                            "date": pub_date.strftime("%Y-%m-%d"),
+                            "title": entry.title,
+                            "link": entry.link,
+                            "source": entry.source.title
+                        })
+                    except Exception:
+                        continue
+                return items
+        except Exception as e:
+            print(f"Error fetching {query} on {start_date}: {e}")
+            exit
 
-    try:
-        async with session.get(url, timeout=20) as response:
-            if response.status != 200:
-                print(f"Request failed for {query} on {start_date} with status: {response.status}")
-                exit
-            
-            feed_text = await response.text()
-            feed = feedparser.parse(feed_text)
-            
-            items = []
-            for entry in feed.entries[:limit]:
-                pub_date = datetime(*entry.published_parsed[:6])
-                items.append({
-                    "date": pub_date.strftime("%Y-%m-%d"),
-                    "title": entry.title,
-                    "link": entry.link,
-                    "source": entry.source.title
-                })
- 
-        return items
-    
-    except Exception as e:
-        print(f"Error fetching {query} on {start_date}: {e}") # 디버깅 시 사용
-        exit
+# get_news_data_async 함수도 이전 답변과 동일합니다. Semaphore를 내부에서 생성하고 사용합니다.
+async def get_news_data_async(stock_code, start_day, end_day):
+    semaphore = asyncio.Semaphore(5)  # 동시 요청 수를 5개로 제한
+    tasks = []
+    async with aiohttp.ClientSession() as session:
+        total_days = (end_day - start_day).days + 1
+        for i in range(total_days):
+            current_day = start_day + timedelta(days=i)
+            task = fetch_news_rss_day_async(session, stock_code, current_day, semaphore)
+            tasks.append(task)
+        
+        # tqdm.asyncio.gather 대신 일반 asyncio.gather 사용
+        # 진행 상황은 외부 for 루프의 tqdm이 담당하므로 내부에서는 desc 제거
+        results = await asyncio.gather(*tasks)
+
+    all_news = [item for sublist in results if sublist is not None for item in sublist]
+    all_news = remove_duplicate_titles_by_prefix(all_news, prefix_length=50)
+    return all_news
 
 def remove_duplicate_titles_by_prefix(all_news, prefix_length=50):
     seen = set()
@@ -60,30 +81,6 @@ def remove_duplicate_titles_by_prefix(all_news, prefix_length=50):
             keep_rows.append(news)
 
     return keep_rows
-
-async def get_news_data_async(stock_code, start_day, end_day):
-    """[asyncio] 모든 뉴스 수집 작업을 비동기적으로 동시에 실행합니다."""
-    tasks = []
-    async with aiohttp.ClientSession() as session:
-            
-        total_days = (end_day - start_day).days + 1
-        for i in range(total_days):
-            current_day = start_day + timedelta(days=i)
-            # 각 날짜와 주식에 대한 비동기 작업을 생성하여 리스트에 추가
-            task = fetch_news_rss_day_async(session, stock_code, current_day)
-            tasks.append(task)
-        
-        # tqdm.gather를 사용하여 모든 작업을 동시에 실행하고 진행 상황을 표시
-        results = await tqdm.gather(*tasks, desc="뉴스 동시 수집 중")
-
-    # 결과는 리스트의 리스트 형태이므로, 하나의 리스트로 펼쳐줍니다.
-    all_news = [item for sublist in results for item in sublist]
-    
-    print("중복 제거 작업 진행 중...")
-    all_news = remove_duplicate_titles_by_prefix(all_news, prefix_length=50)
-    
-    return all_news
-
 
 async def get_stock_price_for_train(stock_code):
     # 문자열 대신 datetime 객체 사용
