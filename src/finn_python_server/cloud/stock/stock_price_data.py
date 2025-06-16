@@ -13,18 +13,20 @@ def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
     
-    prices_to_insert = _stock_price_data_from_tiingo(tiingo_client, stocks, start_date, end_date, logger)
+    prices_to_insert = _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, end_date, logger)
     if prices_to_insert:
         _save_stock_prices_in_db(prices_to_insert, supabase, logger)
     
     logger.info("--- 주가 데이터 수집 작업 완료 ---")
 
-def _stock_price_data_from_tiingo(tiingo_client, stocks, start_date, end_date, logger):
+def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, end_date, logger):
     # (이전과 동일한 로직, 함수 이름 앞에 _를 붙여 내부용임을 표시)
     all_prices_to_insert = []
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
     logger.info(f"{len(stocks)}개 주식에 대한 주가 데이터 수집 (기간: {start_date_str} ~ {end_date_str})")
+    
+    id_to_last_day_prices = _get_last_day_prices(supabase)
     for stock in stocks:
         stock_id = stock['id']
         stock_code = stock.get('stock_code')
@@ -37,7 +39,10 @@ def _stock_price_data_from_tiingo(tiingo_client, stocks, start_date, end_date, l
             
             price_df.reset_index(inplace=True)
             price_df['stock_id'] = stock_id
-            price_df['change_rate'] = 0.0
+            if stock_id in id_to_last_day_prices:
+                price_df['change_rate'] = _calculate_change_rate_for_close(price_df['close'], id_to_last_day_prices[stock_id])
+            else:
+                price_df['change_rate'] = 0.00
             price_df.rename(columns={'date': 'price_date', 'adjOpen': 'open_price', 
                                      'adjHigh': 'high_price', 'adjLow': 'low_price', 'close': 'close_price', 
                                      'adjClose' : 'adj_close_price'}, inplace=True)
@@ -67,5 +72,30 @@ def _save_stock_prices_in_db(all_prices_to_insert, supabase, logger):
         logger.info(f"주가 저장 성공: {len(response.data)}개 레코드 처리")
     except Exception as e:
         logger.error(f"주가 저장 중 오류: {e}")
+
+def _get_last_day_prices(supabase):
+    id_to_prices = {}
+    latest_date_response = supabase.table('stock_prices') \
+            .select('price_date') \
+            .order('price_date', desc=True) \
+            .limit(1) \
+            .single() \
+            .execute()
+    if not latest_date_response.data:
+        raise Exception("stock_prices 테이블에 데이터가 없습니다.")
+            
+    latest_date = latest_date_response.data['price_date']
+    last_day_price_response = supabase.table('stock_prices').select('close_price, stock_id') \
+        .eq('price_date', latest_date) \
+        .execute()
     
+    for row in last_day_price_response.data:
+        stock_id = row['stock_id']
+        close_price = row['close_price']
+        id_to_prices[stock_id] = close_price
     
+    return id_to_prices
+
+def _calculate_change_rate_for_close(today_price, last_day_price):
+    change_rate = ((today_price - last_day_price) / last_day_price) * 100
+    return change_rate.round(2)
