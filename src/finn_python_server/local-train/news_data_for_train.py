@@ -80,11 +80,6 @@ def get_news_data_sync(stock_code, start_day, end_day):
         daily_news = fetch_news_rss_day_sync(stock_code, current_day)
         if daily_news:
             all_news.extend(daily_news)
-        
-        # 서버 부하를 줄이기 위해 각 날짜 요청 사이에 지연 시간을 둡니다.
-        # 이전 답변의 랜덤 딜레이를 적용하는 것이 더 좋습니다.
-        # time.sleep(random.uniform(1, 3))
-        time.sleep(1)
 
     unique_news = remove_duplicate_titles_by_prefix(all_news, prefix_length=50)
     return unique_news
