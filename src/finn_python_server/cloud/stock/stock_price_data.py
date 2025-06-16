@@ -11,7 +11,7 @@ def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     logger.info("--- 주가 데이터 수집 작업 시작 ---")
     
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
+    start_date = end_date - timedelta(days=1)
     
     prices_to_insert = _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, end_date, logger)
     if prices_to_insert:
@@ -35,8 +35,8 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
         try:
             price_df = tiingo_client.get_dataframe(stock_code, startDate=start_date_str, endDate=end_date_str, frequency='daily')
             if price_df.empty: 
-                continue
-            
+                raise Exception(f"{stock_code}: 알 수 없는 오류로 인해 데이터 조회에 실패하였습니다.")
+
             price_df.reset_index(inplace=True)
             price_df['stock_id'] = stock_id
             if stock_id in id_to_last_day_prices:
@@ -99,3 +99,16 @@ def _get_last_day_prices(supabase):
 def _calculate_change_rate_for_close(today_price, last_day_price):
     change_rate = ((today_price - last_day_price) / last_day_price) * 100
     return change_rate.round(2)
+
+
+def _check_is_today_closed_day(tiingo_client):
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=1)
+    price_df = tiingo_client.get_ticker_price('AAPL', fmt='json', startDate=start_date.strftime('%Y-%m-%d'),
+                                           endDate=end_date.strftime('%Y-%m-%d'), frequency='daily')
+    if not price_df:
+        return True
+    
+    return False
+    
+    

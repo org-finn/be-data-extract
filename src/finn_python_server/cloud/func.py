@@ -39,7 +39,10 @@ def handler(ctx, data: io.BytesIO=None):
         # 3. 주가 데이터 수집 모듈 실행
         if tiingo_api_key:
             tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-            stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
+            if not stock_price_data._check_is_today_closed_day(tiingo_client):
+                stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
+            else:
+                logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
         else:
             logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
 
