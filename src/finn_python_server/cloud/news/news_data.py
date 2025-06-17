@@ -8,6 +8,7 @@ from tqdm.asyncio import tqdm
 import asyncio 
 import aiohttp 
 from zoneinfo import ZoneInfo
+from .. import exceptions
 
 seoul_tz = ZoneInfo("Asia/Seoul")
 
@@ -54,10 +55,12 @@ def _save_news_in_db(all_news, supabase, logger):
     # (이전과 동일한 로직, 함수 이름 앞에 _를 붙여 내부용임을 표시)
     try:
         response = supabase.table('news').insert(all_news).execute()
-        if not response.data: raise Exception("Supabase에 뉴스 데이터가 저장되지 않음 (RLS 정책 등 확인)")
+        if not response.data: 
+            raise exceptions.SupabaseError("Supabase에 뉴스 데이터 저장 실패 (응답 데이터 없음). RLS 정책 등을 확인하세요.")
         logger.info(f"뉴스 저장 성공: {len(response.data)}개 레코드 처리")
     except Exception as e:
-        logger.error(f"뉴스 저장 중 오류: {e}")
+        logger.error(f"뉴스 저장 중 심각한 오류: {e}")
+        raise exceptions.SupabaseError(f"뉴스 저장 중 DB 오류 발생: {e}") from e
 
 # --- 뉴스 수집을 위한 나머지 헬퍼 함수들 ---
 def _generate_google_rss_url(query, start_date, end_date):
@@ -69,14 +72,16 @@ def _generate_google_rss_url(query, start_date, end_date):
 def _adjust_title_by_length_limit(title):
     return (title[:97] + '...') if len(title) > 100 else title
 
-async def _fetch_news_rss_day_async(session, query, stock_id, day: datetime, limit: int = 30):
+async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datetime, limit: int = 30):
     start_date = day.strftime("%Y-%m-%d")
     end_date = (day + timedelta(days=1)).strftime("%Y-%m-%d")
     url = _generate_google_rss_url(query, start_date, end_date)
     items = []
     try:
         async with session.get(url, timeout=10) as response:
-            if response.status != 200: return []
+            if response.status != 200:
+                logger.warning(f"뉴스 RSS 피드 요청 실패 (상태 코드: {response.status}, URL: {url})")
+                return []
             feed_text = await response.text()
             feed = feedparser.parse(feed_text)
             for entry in feed.entries[:limit]:
@@ -86,7 +91,7 @@ async def _fetch_news_rss_day_async(session, query, stock_id, day: datetime, lim
                               "original_url": entry.link, "company_name" : query, "view_count" : 0, 
                               "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(seoul_tz)})
     except Exception as e:
-        pass
+        logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
     return items
 
 def _remove_duplicate_titles_by_prefix(all_news, prefix_length=50):

@@ -10,7 +10,7 @@ from stock import stock_price_data
 from news import news_data
 from supabase import create_client, Client
 from tiingo import TiingoClient
-
+import exceptions
 
 def handler(ctx, data: io.BytesIO=None):
     logging.basicConfig(level=logging.INFO)
@@ -25,13 +25,18 @@ def handler(ctx, data: io.BytesIO=None):
         supabase_api_key = os.environ.get('SUPABASE_KEY')
 
         if not all([supabase_url, supabase_api_key]):
-            raise ValueError("Supabase 환경 변수가 설정되지 않았습니다.")
+            raise exceptions.ConfigError("Supabase 환경 변수가 설정되지 않았습니다.")
 
         supabase: Client = create_client(supabase_url, supabase_api_key)
         
         # 2. 공통으로 사용할 주식 정보 가져오기 (이 로직도 별도 모듈로 뺄 수 있습니다)
-        response = supabase.table('stocks').select('id, stock_code, search_keyword').execute()
-        all_stocks = response.data
+        stocks_response = supabase.table('stocks').select('id, stock_code, search_keyword').execute()
+        if not stocks_response.data and stocks_response.data is not None: # data가 있고 비어있는 경우는 정상이지만, 에러로 data 자체가 없을 수 있음
+             pass # 정상 케이스
+        elif not hasattr(stocks_response, 'data'):
+             raise exceptions.SupabaseError("주식 목록 조회 실패: Supabase 응답에 'data' 필드가 없습니다.")
+        
+        all_stocks = stocks_response.data
         if not all_stocks:
             logger.warning("DB에 조회할 주식이 없어 함수를 종료합니다.")
             return response.Response(ctx, response_data=json.dumps({"status": "No stocks to process"}), headers={"Content-Type": "application/json"})
@@ -39,7 +44,7 @@ def handler(ctx, data: io.BytesIO=None):
         # 3. 주가 데이터 수집 모듈 실행
         if tiingo_api_key:
             tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-            if not stock_price_data._check_is_today_closed_day(tiingo_client):
+            if not stock_price_data._check_is_today_closed_day(tiingo_client, logger):
                 stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
             else:
                 logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
@@ -55,10 +60,28 @@ def handler(ctx, data: io.BytesIO=None):
             headers={"Content-Type": "application/json"}
         )
 
-    except Exception as e:
-        logger.error(f"파이프라인 실행 중 심각한 오류 발생: {e}", exc_info=True)
+    except exceptions.ConfigError as e:
+        logger.critical(f"설정 오류 발생: {e}", exc_info=True)
         return response.Response(
-            ctx, response_data=json.dumps({"status": "Error", "message": str(e)}),
-            headers={"Content-Type": "application/json"},
-            status_code=500
+            ctx, response_data=json.dumps({"status": "Config Error", "message": str(e)}),
+            headers={"Content-Type": "application/json"}, status_code=500
+        )
+    except exceptions.ApiError as e:
+        logger.error(f"외부 API 오류 발생: {e}", exc_info=True)
+        return response.Response(
+            ctx, response_data=json.dumps({"status": "API Error", "message": str(e)}),
+            headers={"Content-Type": "application/json"}, status_code=503 # Service Unavailable
+        )
+    except exceptions.DbError as e:
+        logger.error(f"데이터베이스 오류 발생: {e}", exc_info=True)
+        return response.Response(
+            ctx, response_data=json.dumps({"status": "Database Error", "message": str(e)}),
+            headers={"Content-Type": "application/json"}, status_code=503 # Service Unavailable
+        )
+    except Exception as e:
+        # [수정] 이곳은 예측하지 못한 모든 예외를 잡는 최후의 보루입니다.
+        logger.critical(f"파이프라인 실행 중 예측하지 못한 심각한 오류 발생: {e}", exc_info=True)
+        return response.Response(
+            ctx, response_data=json.dumps({"status": "Internal Server Error", "message": "An unexpected error occurred."}),
+            headers={"Content-Type": "application/json"}, status_code=500
         )

@@ -1,4 +1,4 @@
-import os
+import sys, os
 from tiingo import TiingoClient
 import pandas as pd
 from supabase import create_client, Client
@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from tqdm import tqdm
 import traceback
+from .. import exceptions
 
 pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
 
@@ -29,7 +30,7 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
     end_date_str = end_date.strftime('%Y-%m-%d')
     logger.info(f"{len(stocks)}개 주식에 대한 주가 데이터 수집 (기간: {start_date_str} ~ {end_date_str})")
     
-    id_to_last_day_prices = _get_last_day_prices(supabase)
+    id_to_last_day_prices = _get_last_day_prices(supabase, logger)
     for stock in stocks:
         stock_id = stock['id']
         stock_code = stock.get('stock_code')
@@ -38,8 +39,8 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
         try:
             price_df = tiingo_client.get_dataframe(stock_code, startDate=start_date_str, endDate=end_date_str, frequency='daily')
             if price_df.empty: 
-                raise Exception(f"{stock_code}: 알 수 없는 오류로 인해 데이터 조회에 실패하였습니다.")
-                traceback.print_exc()
+                logger.warning(f"'{stock_code}'에 대한 Tiingo 데이터를 가져올 수 없습니다. 건너뜁니다.")
+                continue # 다음 주식으로 넘어감
 
             price_df.reset_index(inplace=True)
             price_df['stock_id'] = stock_id
@@ -63,9 +64,10 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             
             all_prices_to_insert.extend(processed_df.to_dict(orient='records'))
         except Exception as e:
-            logger.error(f"'{stock_code}' 주가 처리 중 오류: {e}")
-            traceback.print_exc()
-            continue
+            logger.error(f"'{stock_code}' 주가 처리 중 오류 발생. 건너뜁니다: {e}")
+            traceback.print_exc() # 상세 스택 트레이스 확인을 위해 유지
+            continue # 다음 주식으로 넘어감
+        
     logger.info(f"총 {len(all_prices_to_insert)}개의 주가 레코드를 처리했습니다.")
     return all_prices_to_insert
 
@@ -74,48 +76,63 @@ def _save_stock_prices_in_db(all_prices_to_insert, supabase, logger):
     try:
         response = supabase.table('stock_prices').upsert(all_prices_to_insert, on_conflict='stock_id, price_date').execute()
         if not response.data: 
-            raise Exception("Supabase에 데이터가 저장되지 않음 (RLS 정책 등 확인)")
+            raise exceptions.SupabaseError("Supabase에 주가 데이터 저장 실패 (응답 데이터 없음). RLS 정책 등을 확인하세요.")
         logger.info(f"주가 저장 성공: {len(response.data)}개 레코드 처리")
     except Exception as e:
         logger.error(f"주가 저장 중 오류: {e}")
-        traceback.print_exc()
+        logger.error(f"주가 저장 중 심각한 오류: {e}")
+        raise exceptions.SupabaseError(f"주가 저장 중 DB 오류 발생: {e}") from e
 
-def _get_last_day_prices(supabase):
-    id_to_prices = {}
-    latest_date_response = supabase.table('stock_prices') \
-            .select('price_date') \
-            .order('price_date', desc=True) \
-            .limit(1) \
-            .single() \
+def _get_last_day_prices(supabase, logger):
+    try:
+        id_to_prices = {}
+        latest_date_response = supabase.table('stock_prices') \
+                .select('price_date') \
+                .order('price_date', desc=True) \
+                .limit(1) \
+                .execute()
+        if not latest_date_response.data:
+            logger.warning("stock_prices 테이블에 데이터가 없어 전일 종가 조회를 건너뜁니다.")
+            return {} # 빈 딕셔너리를 반환하여 뒷부분 로직이 정상적으로 처리되도록 함
+                
+        latest_date = latest_date_response.data[0]['price_date']
+        last_day_price_response = supabase.table('stock_prices').select('close_price, stock_id') \
+            .eq('price_date', latest_date) \
             .execute()
-    if not latest_date_response.data:
-        raise Exception("stock_prices 테이블에 데이터가 없습니다.")
+        
+        # 여기서도 데이터가 없을 수 있으므로 확인
+        if not last_day_price_response.data:
+            logger.warning(f"{latest_date}에 해당하는 주가 데이터가 없습니다. 전일 종가 조회를 건너뜁니다.")
+            return {}
             
-    latest_date = latest_date_response.data['price_date']
-    last_day_price_response = supabase.table('stock_prices').select('close_price, stock_id') \
-        .eq('price_date', latest_date) \
-        .execute()
-    
-    for row in last_day_price_response.data:
-        stock_id = row['stock_id']
-        close_price = row['close_price']
-        id_to_prices[stock_id] = close_price
-    
-    return id_to_prices
+        for row in last_day_price_response.data:
+            stock_id = row['stock_id']
+            close_price = row['close_price']
+            id_to_prices[stock_id] = close_price
+        
+        return id_to_prices
+    except Exception as e:
+        # [추가] DB 조회 중 발생한 모든 예외를 SupabaseError로 다시 던짐
+        logger.error(f"어제 자 주가 조회 중 오류: {e}")
+        raise exceptions.SupabaseError(f"어제 자 주가 조회 중 DB 오류 발생: {e}") from e
 
 def _calculate_change_rate_for_close(today_price, last_day_price):
     change_rate = ((today_price - last_day_price) / last_day_price) * 100
     return change_rate.round(2)
 
 
-def _check_is_today_closed_day(tiingo_client):
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=1)
-    price_df = tiingo_client.get_ticker_price('AAPL', fmt='json', startDate=start_date.strftime('%Y-%m-%d'),
-                                           endDate=end_date.strftime('%Y-%m-%d'), frequency='daily')
-    if not price_df:
-        return True
-    
-    return False
+def _check_is_today_closed_day(tiingo_client, logger):
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=1)
+        price_df = tiingo_client.get_ticker_price('AAPL', fmt='json', startDate=start_date.strftime('%Y-%m-%d'),
+                                            endDate=end_date.strftime('%Y-%m-%d'), frequency='daily')
+        if not price_df:
+            return True
+        return False
+    except Exception as e:
+        # [추가] API 호출 실패 시 구체적인 예외를 던짐
+        logger.error(f"휴장일 확인 중 Tiingo API 오류 발생: {e}")
+        raise exceptions.TiingoApiError(f"휴장일 확인 중 API 오류 발생: {e}") from e
     
     
