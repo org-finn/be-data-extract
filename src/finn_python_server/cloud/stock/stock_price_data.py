@@ -5,6 +5,9 @@ from supabase import create_client, Client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from tqdm import tqdm
+from zoneinfo import ZoneInfo
+
+seoul_tz = ZoneInfo("Asia/Seoul")
 
 def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     """주가 데이터 수집부터 저장까지의 전체 과정을 실행하는 메인 함수"""
@@ -51,9 +54,10 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             for col in numeric_columns: 
                 price_df[col] = pd.to_numeric(price_df[col], errors='coerce').round(4)
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
+            price_df['created_at'] = datetime.now(seoul_tz)
             
             required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 
-                                'adj_close_price', 'change_rate', 'volume']
+                                'adj_close_price', 'change_rate', 'volume', 'created_at']
             processed_df = price_df[required_columns].dropna()
             
             all_prices_to_insert.extend(processed_df.to_dict(orient='records'))

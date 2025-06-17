@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 from tqdm.asyncio import tqdm 
 import asyncio 
 import aiohttp 
+from zoneinfo import ZoneInfo
+
+seoul_tz = ZoneInfo("Asia/Seoul")
 
 async def collect_and_save_news_async(supabase, stocks, logger):
     """뉴스 데이터 수집부터 저장까지의 전체 과정을 비동기적으로 실행하는 메인 함수"""
@@ -79,8 +82,9 @@ async def _fetch_news_rss_day_async(session, query, stock_id, day: datetime, lim
             for entry in feed.entries[:limit]:
                 try: pub_date = datetime(*entry.published_parsed[:6])
                 except Exception: continue
-                items.append({"created_date": pub_date.strftime("%Y-%m-%d"), "title": _adjust_title_by_length_limit(entry.title), 
-                              "original_url": entry.link, "company_name" : query, "view_count" : 0, "like_count" : 0, "stock_id" : stock_id})
+                items.append({"published_date": pub_date, "title": _adjust_title_by_length_limit(entry.title), 
+                              "original_url": entry.link, "company_name" : query, "view_count" : 0, 
+                              "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(seoul_tz)})
     except Exception as e:
         pass
     return items
