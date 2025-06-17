@@ -5,9 +5,9 @@ from supabase import create_client, Client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from tqdm import tqdm
-from zoneinfo import ZoneInfo
+import traceback
 
-seoul_tz = ZoneInfo("Asia/Seoul")
+pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
 
 def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     """주가 데이터 수집부터 저장까지의 전체 과정을 실행하는 메인 함수"""
@@ -39,11 +39,12 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             price_df = tiingo_client.get_dataframe(stock_code, startDate=start_date_str, endDate=end_date_str, frequency='daily')
             if price_df.empty: 
                 raise Exception(f"{stock_code}: 알 수 없는 오류로 인해 데이터 조회에 실패하였습니다.")
+                traceback.print_exc()
 
             price_df.reset_index(inplace=True)
             price_df['stock_id'] = stock_id
             if stock_id in id_to_last_day_prices:
-                price_df['change_rate'] = _calculate_change_rate_for_close(price_df['close'], id_to_last_day_prices[stock_id])
+               price_df['change_rate'] = _calculate_change_rate_for_close(price_df['close'], id_to_last_day_prices[stock_id])
             else:
                 price_df['change_rate'] = 0.00
             price_df.rename(columns={'date': 'price_date', 'adjOpen': 'open_price', 
@@ -54,7 +55,7 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             for col in numeric_columns: 
                 price_df[col] = pd.to_numeric(price_df[col], errors='coerce').round(4)
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
-            price_df['created_at'] = datetime.now(seoul_tz)
+            price_df['created_at'] = pandas_ts.isoformat()
             
             required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 
                                 'adj_close_price', 'change_rate', 'volume', 'created_at']
@@ -63,6 +64,7 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             all_prices_to_insert.extend(processed_df.to_dict(orient='records'))
         except Exception as e:
             logger.error(f"'{stock_code}' 주가 처리 중 오류: {e}")
+            traceback.print_exc()
             continue
     logger.info(f"총 {len(all_prices_to_insert)}개의 주가 레코드를 처리했습니다.")
     return all_prices_to_insert
@@ -76,6 +78,7 @@ def _save_stock_prices_in_db(all_prices_to_insert, supabase, logger):
         logger.info(f"주가 저장 성공: {len(response.data)}개 레코드 처리")
     except Exception as e:
         logger.error(f"주가 저장 중 오류: {e}")
+        traceback.print_exc()
 
 def _get_last_day_prices(supabase):
     id_to_prices = {}
