@@ -7,10 +7,9 @@ from dotenv import load_dotenv
 from tqdm.asyncio import tqdm 
 import asyncio 
 import aiohttp 
-from zoneinfo import ZoneInfo
 from .. import exceptions
 
-seoul_tz = ZoneInfo("Asia/Seoul")
+pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
 
 async def collect_and_save_news_async(supabase, stocks, logger):
     """뉴스 데이터 수집부터 저장까지의 전체 과정을 비동기적으로 실행하는 메인 함수"""
@@ -38,7 +37,7 @@ async def _get_news_data_async(stocks, start_day, end_day, logger):
             total_days = (end_day - start_day).days + 1
             for i in range(total_days):
                 current_day = start_day + timedelta(days=i)
-                task = _fetch_news_rss_day_async(session, query, stock_id, current_day)
+                task = _fetch_news_rss_day_async(logger, session, query, stock_id, current_day)
                 tasks.append(task)
         
         results = await asyncio.gather(*tasks)
@@ -85,11 +84,11 @@ async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datet
             feed_text = await response.text()
             feed = feedparser.parse(feed_text)
             for entry in feed.entries[:limit]:
-                try: pub_date = datetime(*entry.published_parsed[:6])
+                try: pub_date = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%dT%H:%M:%S%z')
                 except Exception: continue
                 items.append({"published_date": pub_date, "title": _adjust_title_by_length_limit(entry.title), 
                               "original_url": entry.link, "company_name" : query, "view_count" : 0, 
-                              "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(seoul_tz)})
+                              "like_count" : 0, "stock_id" : stock_id, "created_at" : pandas_ts.strftime('%Y-%m-%dT%H:%M:%S%z')})
     except Exception as e:
         logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
     return items

@@ -56,7 +56,7 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             for col in numeric_columns: 
                 price_df[col] = pd.to_numeric(price_df[col], errors='coerce').round(4)
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
-            price_df['created_at'] = pandas_ts.isoformat()
+            price_df['created_at'] = pandas_ts.strftime('%Y-%m-%dT%H:%M:%S%z')
             
             required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 
                                 'adj_close_price', 'change_rate', 'volume', 'created_at']
