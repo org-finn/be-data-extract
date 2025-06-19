@@ -1,4 +1,3 @@
-import sys
 import os
 import io
 import json
@@ -12,7 +11,7 @@ from supabase import create_client, Client
 from tiingo import TiingoClient
 import exceptions
 
-def handler(ctx, data: io.BytesIO=None):
+async def handler(ctx, data: io.BytesIO=None):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger()
     
@@ -52,11 +51,11 @@ def handler(ctx, data: io.BytesIO=None):
             logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
 
         # 4. 뉴스 데이터 수집 모듈 실행 (비동기)
-        asyncio.run(news_data.collect_and_save_news_async(supabase, all_stocks, logger))
+        await news_data.collect_and_save_news_async(supabase, all_stocks, logger)
 
         logger.info("=== 모든 데이터 수집 파이프라인 성공적으로 완료 ===")
         return response.Response(
-            ctx, response_data=json.dumps({"status": "Success"}),
+            ctx, response_data=json.dumps({"status": "Success, 주가/뉴스 데이터 수집을 정상적으로 수행하였습니다."}),
             headers={"Content-Type": "application/json"}
         )
 
@@ -82,6 +81,6 @@ def handler(ctx, data: io.BytesIO=None):
         # [수정] 이곳은 예측하지 못한 모든 예외를 잡는 최후의 보루입니다.
         logger.critical(f"파이프라인 실행 중 예측하지 못한 심각한 오류 발생: {e}", exc_info=True)
         return response.Response(
-            ctx, response_data=json.dumps({"status": "Internal Server Error", "message": "An unexpected error occurred."}),
+            ctx, response_data=json.dumps({"status": "Internal Server Error", "message": str(e)}),
             headers={"Content-Type": "application/json"}, status_code=500
         )

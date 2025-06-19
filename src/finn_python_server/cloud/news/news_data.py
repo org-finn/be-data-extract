@@ -1,13 +1,10 @@
-import os
 import feedparser
 from datetime import datetime, timedelta
 import pandas as pd
 from supabase import create_client, Client
-from dotenv import load_dotenv
-from tqdm.asyncio import tqdm 
 import asyncio 
 import aiohttp 
-from .. import exceptions
+import exceptions
 
 pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
 
