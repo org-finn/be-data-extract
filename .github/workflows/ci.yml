@@ -54,6 +54,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o oci_install.sh
+          chmod +x oci_install.sh
+          ./oci_install.sh --accept-all-defaults
+          echo "/home/runner/bin" >> $GITHUB_PATH
+
       - name: Set up OCI CLI Configuration
         # 이 스텝은 특정 폴더와 무관하게 홈 디렉토리에 파일을 생성하므로 working-directory 영향을 받지 않습니다.
         run: |
@@ -63,11 +70,13 @@ jobs:
           echo "fingerprint=${{ secrets.OCI_FINGERPRINT }}" >> ~/.oci/config
           echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
           echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
-          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          echo "key_file=/home/runner/.oci/oci_api_key.pem" >> ~/.oci/config
+          
+          # 개인 키 파일 생성
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > /home/runner/.oci/oci_api_key.pem
 
       - name: Log in to OCI Container Registry
-        # 이 스텝도 특정 폴더와 무관한 전역 로그인 명령어입니다.
-        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCI_REGION }}.ocir.io -u '${{ secrets.OCI_TENANCY_NAMESPACE }}/${{ secrets.OCI_USER_EMAIL }}' --password-stdin
+        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login -u '${{ secrets.OCI_TENANCY_NAMESPACE }}/${{ secrets.OCI_USER_EMAIL }}' yny.ocir.io --password-stdin
 
       - name: Build and Push Docker Image
         run: |
@@ -78,4 +87,4 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
       - name: Update OCI Function
-        run: oci fn function update --function-id ${{ secrets.OCI_FUNCTION_OCID }} --image ${{ env.IMAGE_TAG }}
+        run: oci fn function update --function-id "${{ secrets.OCI_FUNCTION_OCID }}"

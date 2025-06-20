@@ -1,13 +1,15 @@
 FROM fnproject/python:3.9-dev as build-stage
 WORKDIR /function
+
 ADD requirements.txt /function/
 RUN pip3 install --target /python/  --no-cache-dir -r requirements.txt
 ADD . /function/
-RUN rm -fr __pycache__
-RUN rm -fr .pip_cache
+
+RUN python3 cleanup.py
+
+# 더 이상 필요 없는 파일들을 정리합니다.
 RUN rm -f requirements.txt
-RUN find . -name "__pycache__" | xargs rm -fr
-RUN find . -name ".pip_cache" | xargs rm -fr
+RUN rm -f cleanup.py
 
 FROM fnproject/python:3.9
 WORKDIR /function
