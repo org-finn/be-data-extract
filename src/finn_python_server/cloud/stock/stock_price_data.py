@@ -1,12 +1,8 @@
-import sys, os
-from tiingo import TiingoClient
 import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from tqdm import tqdm
 import traceback
-from .. import exceptions
+import exceptions
 
 pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
 
@@ -24,7 +20,6 @@ def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     logger.info("--- 주가 데이터 수집 작업 완료 ---")
 
 def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, end_date, logger):
-    # (이전과 동일한 로직, 함수 이름 앞에 _를 붙여 내부용임을 표시)
     all_prices_to_insert = []
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
@@ -72,7 +67,6 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
     return all_prices_to_insert
 
 def _save_stock_prices_in_db(all_prices_to_insert, supabase, logger):
-    # (이전과 동일한 로직, 함수 이름 앞에 _를 붙여 내부용임을 표시)
     try:
         response = supabase.table('stock_prices').upsert(all_prices_to_insert, on_conflict='stock_id, price_date').execute()
         if not response.data: 
@@ -112,7 +106,6 @@ def _get_last_day_prices(supabase, logger):
         
         return id_to_prices
     except Exception as e:
-        # [추가] DB 조회 중 발생한 모든 예외를 SupabaseError로 다시 던짐
         logger.error(f"어제 자 주가 조회 중 오류: {e}")
         raise exceptions.SupabaseError(f"어제 자 주가 조회 중 DB 오류 발생: {e}") from e
 
@@ -131,7 +124,6 @@ def _check_is_today_closed_day(tiingo_client, logger):
             return True
         return False
     except Exception as e:
-        # [추가] API 호출 실패 시 구체적인 예외를 던짐
         logger.error(f"휴장일 확인 중 Tiingo API 오류 발생: {e}")
         raise exceptions.TiingoApiError(f"휴장일 확인 중 API 오류 발생: {e}") from e
     
