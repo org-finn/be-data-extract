@@ -26,11 +26,13 @@ jobs:
           python-version: '3.9'
 
       - name: Install Dependencies
+        working-directory: ./src/finn_python_server/cloud
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
       - name: Lint with flake8
+        working-directory: ./src/finn_python_server/cloud
         run: |
           pip install flake8
           # flake8으로 코드 스타일을 검사하고, 오류가 있으면 작업을 중단시킵니다.
@@ -71,4 +73,5 @@ jobs:
           fn update context registry ${{ secrets.OCIR_REGISTRY_PATH }}
       
       - name: Deploy to OCI Functions
+        working-directory: ./src/finn_python_server/cloud
         run: fn deploy --app ${{ secrets.OCI_APP_NAME }}
