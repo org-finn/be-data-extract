@@ -61,17 +61,26 @@ jobs:
           echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
           echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
           echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
-          
+      
       - name: Install and Configure Fn CLI
         run: |
           # Fn CLI 설치
           curl -LSs https://raw.githubusercontent.com/fnproject/cli/master/install | sh
           # Fn 컨텍스트 설정
-          fn use context default
-          fn update context oracle.compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }}
-          fn update context api-url https://functions.${{ secrets.OCI_REGION }}.oraclecloud.com
-          fn update context registry ${{ secrets.OCIR_REGISTRY_PATH }}
-      
+          # fn use context default
+          # fn update context oracle.compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }}
+          # fn update context api-url https://functions.${{ secrets.OCI_REGION }}.oraclecloud.com
+          # fn update context registry ${{ secrets.OCIR_REGISTRY_PATH }}
+          # 모든 fn 명령어에 --verbose 옵션을 추가하여 상세 로그를 출력합니다.
+          fn --verbose use context default
+          fn --verbose update context oracle.compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }}
+          fn --verbose update context api-url https://functions.${{ secrets.OCI_REGION }}.oraclecloud.com
+          fn --verbose update context registry ${{ secrets.OCIR_REGISTRY_PATH }}
+
+          # 디버깅을 위해 현재 컨텍스트로 앱 목록을 조회하는 명령어를 추가합니다.
+          # 만약 여기서 권한/설정 오류가 발생하면, 배포까지 갈 필요 없이 문제를 진단할 수 있습니다.
+          echo "--- Running 'fn list apps' for debugging ---"
+          fn --verbose list apps
       - name: Deploy to OCI Functions
         working-directory: ./src/finn_python_server/cloud
         run: fn deploy --app ${{ secrets.OCI_APP_NAME }}
