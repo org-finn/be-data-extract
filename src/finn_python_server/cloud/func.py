@@ -10,6 +10,7 @@ from news import news_data
 from supabase import create_client, Client
 from tiingo import TiingoClient
 import exceptions
+from datetime import datetime
 
 async def handler(ctx, data: io.BytesIO=None):
     logging.basicConfig(level=logging.INFO)
@@ -55,7 +56,11 @@ async def handler(ctx, data: io.BytesIO=None):
 
         logger.info("=== 모든 데이터 수집 파이프라인 성공적으로 완료 ===")
         return response.Response(
-            ctx, response_data=json.dumps({"status": "Success, 주가/뉴스 데이터 수집을 정상적으로 수행하였습니다."}),
+            ctx, response_data=json.dumps({
+                "created_date" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "status" : "Success",
+                "message" : "주가/뉴스 데이터 수집을 정상적으로 수행하였습니다."
+            }),
             headers={"Content-Type": "application/json"}
         )
 
