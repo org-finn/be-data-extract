@@ -13,7 +13,7 @@ async def collect_and_save_news_async(supabase, stocks, logger):
     logger.info("--- 뉴스 데이터 수집 작업 시작 ---")
     
     end_day = datetime.now()
-    start_day = end_day - timedelta(days=1)
+    start_day = end_day
     
     all_news = await _get_news_data_async(stocks, start_day, end_day, logger)
     if all_news:
