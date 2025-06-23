@@ -1,0 +1,48 @@
+import os
+import oci
+import json
+from datetime import datetime
+
+def send_completion_message(signer, logger):
+    """
+    작업 완료 메시지를 OCI Queue에 전송합니다.
+    인증을 위한 signer 객체와 로깅을 위한 logger 객체를 인자로 받습니다.
+    """
+    try:
+        logger.info("큐 메시지 전송을 시작합니다.")
+        
+        # OCI Queue 클라이언트 초기화
+        queue_client = oci.queue.QueueClient(config={}, signer=signer)
+
+        # 환경 변수에서 큐 정보 가져오기
+        queue_id = os.environ.get("QUEUE_ID")
+        queue_endpoint = os.environ.get("QUEUE_ENDPOINT")
+        
+        if not all([queue_id, queue_endpoint]):
+            raise ValueError("Queue 관련 환경 변수(QUEUE_ID, QUEUE_ENDPOINT)가 설정되지 않았습니다.")
+
+        # 보낼 메시지 내용 정의
+        message_content = json.dumps({
+            "status": "SUCCESS",
+            "source": "data-collection-function",
+            "created_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        
+        # 큐에 메시지 넣기
+        put_messages_response = queue_client.put_messages(
+            queue_id=queue_id,
+            messages=[oci.queue.models.PutMessagesDetailsEntry(content=message_content)],
+            endpoint=queue_endpoint
+        )
+        
+        # 메시지 전송 결과 확인
+        if put_messages_response.data.failures:
+            failed_message = put_messages_response.data.failures[0]
+            raise Exception(f"메시지 전송 실패: {failed_message.message}")
+
+        logger.info("큐에 메시지를 성공적으로 전송했습니다.")
+
+    except Exception as e:
+        logger.error(f"큐 메시지 전송 중 오류 발생: {e}", exc_info=True)
+        # 에러를 다시 발생시켜 상위 핸들러가 인지하고 처리하도록 함
+        raise
