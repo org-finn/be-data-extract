@@ -28,32 +28,32 @@ async def handler(ctx, data: io.BytesIO=None):
         if not all([supabase_url, supabase_api_key]):
             raise exceptions.ConfigError("Supabase 환경 변수가 설정되지 않았습니다.")
 
-        # supabase: Client = create_client(supabase_url, supabase_api_key)
+        supabase: Client = create_client(supabase_url, supabase_api_key)
         
-        # # 2. 공통으로 사용할 주식 정보 가져오기 (이 로직도 별도 모듈로 뺄 수 있습니다)
-        # stocks_response = supabase.table('stocks').select('id, stock_code, search_keyword').execute()
-        # if not stocks_response.data and stocks_response.data is not None: # data가 있고 비어있는 경우는 정상이지만, 에러로 data 자체가 없을 수 있음
-        #      pass # 정상 케이스
-        # elif not hasattr(stocks_response, 'data'):
-        #      raise exceptions.SupabaseError("주식 목록 조회 실패: Supabase 응답에 'data' 필드가 없습니다.")
+        # 2. 공통으로 사용할 주식 정보 가져오기 (이 로직도 별도 모듈로 뺄 수 있습니다)
+        stocks_response = supabase.table('stocks').select('id, stock_code, search_keyword').execute()
+        if not stocks_response.data and stocks_response.data is not None: # data가 있고 비어있는 경우는 정상이지만, 에러로 data 자체가 없을 수 있음
+             pass # 정상 케이스
+        elif not hasattr(stocks_response, 'data'):
+             raise exceptions.SupabaseError("주식 목록 조회 실패: Supabase 응답에 'data' 필드가 없습니다.")
         
-        # all_stocks = stocks_response.data
-        # if not all_stocks:
-        #     logger.warning("DB에 조회할 주식이 없어 함수를 종료합니다.")
-        #     return response.Response(ctx, response_data=json.dumps({"status": "No stocks to process"}), headers={"Content-Type": "application/json"})
+        all_stocks = stocks_response.data
+        if not all_stocks:
+            logger.warning("DB에 조회할 주식이 없어 함수를 종료합니다.")
+            return response.Response(ctx, response_data=json.dumps({"status": "No stocks to process"}), headers={"Content-Type": "application/json"})
 
-        # # 3. 주가 데이터 수집 모듈 실행
-        # if tiingo_api_key:
-        #     tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-        #     if not stock_price_data._check_is_today_closed_day(tiingo_client, logger):
-        #         stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
-        #     else:
-        #         logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
-        # else:
-        #     logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
+        # 3. 주가 데이터 수집 모듈 실행
+        if tiingo_api_key:
+            tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
+            if not stock_price_data._check_is_today_closed_day(tiingo_client, logger):
+                stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
+            else:
+                logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
+        else:
+            logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
 
-        # # 4. 뉴스 데이터 수집 모듈 실행 (비동기)
-        # await news_data.collect_and_save_news_async(supabase, all_stocks, logger)
+        # 4. 뉴스 데이터 수집 모듈 실행 (비동기)
+        await news_data.collect_and_save_news_async(supabase, all_stocks, logger)
 
         # 5. 작업 완료 및 메시징 큐에 메시지 삽입
         
