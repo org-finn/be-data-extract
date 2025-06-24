@@ -3,14 +3,17 @@ import oci
 import json
 from datetime import datetime
 
-def send_completion_message(signer, logger):
+def send_completion_message(logger):
     """
     작업 완료 메시지를 OCI Queue에 전송합니다.
     인증을 위한 signer 객체와 로깅을 위한 logger 객체를 인자로 받습니다.
     """
     try:
         logger.info("큐 메시지 전송을 시작합니다.")
-
+        
+        logger.info("시그널 정보를 가져옵니다.")
+        signer = oci.auth.signers.get_resource_principals_signer()
+        
         # 환경 변수에서 큐 정보 가져오기
         queue_id = os.environ.get("QUEUE_ID")
         queue_endpoint = os.environ.get("QUEUE_ENDPOINT")
@@ -41,9 +44,14 @@ def send_completion_message(signer, logger):
         )
         
         # 메시지 전송 결과 확인
-        if put_messages_response.data.failures:
+        if hasattr(put_messages_response.data, 'failures') and put_messages_response.data.failures:
+            # 실패한 메시지가 있을 경우에만 이 블록이 실행됨
             failed_message = put_messages_response.data.failures[0]
             raise Exception(f"메시지 전송 실패: {failed_message.message}")
+        else:
+            # 실패한 메시지가 없으면 성공으로 간주
+            logger.info("모든 메시지가 큐에 성공적으로 전송되었습니다.")
+            logger.info(f"전송 결과: {put_messages_response.data.messages}")
 
         logger.info("큐에 메시지를 성공적으로 전송했습니다.")
 
