@@ -87,4 +87,4 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
       - name: Update OCI Function
-        run: oci fn function update --function-id "${{ secrets.OCI_FUNCTION_OCID }}"
+        run: oci fn function update --function-id "${{ secrets.OCI_FUNCTION_OCID }}" --image ${{ env.IMAGE_TAG }}
