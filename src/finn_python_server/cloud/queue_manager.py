@@ -10,13 +10,13 @@ def send_completion_message(signer, logger):
     """
     try:
         logger.info("큐 메시지 전송을 시작합니다.")
-        
-        # OCI Queue 클라이언트 초기화
-        queue_client = oci.queue.QueueClient(config={}, signer=signer)
 
         # 환경 변수에서 큐 정보 가져오기
         queue_id = os.environ.get("QUEUE_ID")
         queue_endpoint = os.environ.get("QUEUE_ENDPOINT")
+        
+        # OCI Queue 클라이언트 초기화
+        queue_client = oci.queue.QueueClient(config={}, signer=signer, service_endpoint=queue_endpoint)
         
         if not all([queue_id, queue_endpoint]):
             raise ValueError("Queue 관련 환경 변수(QUEUE_ID, QUEUE_ENDPOINT)가 설정되지 않았습니다.")
@@ -28,11 +28,16 @@ def send_completion_message(signer, logger):
             "created_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         
+        message_entries = [
+            oci.queue.models.PutMessagesDetailsEntry(content=message_content)
+        ]
+        
+        put_messages_details_object = oci.queue.models.PutMessagesDetails(messages=message_entries)
+        
         # 큐에 메시지 넣기
         put_messages_response = queue_client.put_messages(
             queue_id=queue_id,
-            messages=[oci.queue.models.PutMessagesDetailsEntry(content=message_content)],
-            endpoint=queue_endpoint
+            put_messages_details=put_messages_details_object
         )
         
         # 메시지 전송 결과 확인
