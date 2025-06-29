@@ -43,11 +43,13 @@ async def handler(ctx, data: io.BytesIO=None):
             return response.Response(ctx, response_data=json.dumps({"status": "No stocks to process"}), headers={"Content-Type": "application/json"})
 
         # 3. 주가 데이터 수집 모듈 실행
+        is_closed_day = False
         if tiingo_api_key:
             tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
             if not stock_price_data.check_is_today_closed_day(tiingo_client, logger):
                 stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
             else:
+                is_closed_day = True
                 logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
         else:
             logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
@@ -57,11 +59,14 @@ async def handler(ctx, data: io.BytesIO=None):
 
         # 5. 작업 완료 및 메시징 큐에 메시지 삽입
         
-        # 모든 작업이 성공적으로 끝난 후, 큐 모듈을 호출하여 메시지를 보냅니다.
-        logger.info("모든 데이터 수집 완료. 큐에 완료 메시지를 보냅니다.")
-        
-        # queue_manager 모듈의 함수를 호출
-        queue_manager.send_completion_message(logger)
+        # 모든 작업이 성공적으로 끝난 후, 큐 모듈을 호출하여 메시지를 보냅니다. (휴장일 제외)
+        if not is_closed_day:
+            logger.info("모든 데이터 수집 완료. 큐에 완료 메시지를 보냅니다.")
+            
+            # queue_manager 모듈의 함수를 호출
+            queue_manager.send_completion_message(logger)
+        else:
+            logger.info("휴장일이므로 큐에 메시지를 보내지 않습니다.")
         
         logger.info("=== 모든 데이터 수집 파이프라인 성공적으로 완료 ===")
         return response.Response(
