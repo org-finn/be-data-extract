@@ -119,7 +119,13 @@ def _calculate_change_rate_for_close(today_price, last_day_price):
     return change_rate.round(2)
 
 
-def _check_is_today_closed_day(tiingo_client, logger):
+def check_is_today_closed_day(tiingo_client, logger):
+    
+    today = datetime.now()
+    # 주말(토요일=5, 일요일=6)인지 먼저 확인
+    if today.weekday() >= 5:
+        return True
+    
     try:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=1)
