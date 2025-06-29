@@ -35,7 +35,7 @@ def main():
     # 3. 주가 데이터 수집 모듈 실행
     if tiingo_api_key:
         tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-        if not stock_price_data._check_is_today_closed_day(tiingo_client, logger):
+        if not stock_price_data.check_is_today_closed_day(tiingo_client, logger):
                 stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
         else:
             print("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")

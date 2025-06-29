@@ -3,10 +3,10 @@ from supabase import create_client, Client
 from datetime import datetime, timedelta
 import traceback
 
-# import sys,os
-# base_dir = os.path.dirname(__file__)
-# parent_path = os.path.join(base_dir, '..')
-# sys.path.append(parent_path)
+import sys,os
+base_dir = os.path.dirname(__file__)
+parent_path = os.path.join(base_dir, '..')
+sys.path.append(parent_path)
 import exceptions
 
 pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
