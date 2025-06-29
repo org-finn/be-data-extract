@@ -43,26 +43,30 @@ async def handler(ctx, data: io.BytesIO=None):
             return response.Response(ctx, response_data=json.dumps({"status": "No stocks to process"}), headers={"Content-Type": "application/json"})
 
         # 3. 주가 데이터 수집 모듈 실행
-        is_closed_day = False
         if tiingo_api_key:
             tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-            if not stock_price_data.check_is_today_closed_day(tiingo_client, logger):
-                stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
-            else:
-                is_closed_day = True
+            today = datetime.now()
+            # 일요일=6, 월요일=0인지 먼저 확인(한국 시간 오전 7시 기준으로, 미국의 해당 날짜(토,일)에는 주가 정보가 없음)
+            if today.weekday() == 0 or today.weekday() == 6:
                 logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
+                is_closed_day = True
+            else:
+                is_closed_day = stock_price_data.check_is_today_closed_day(tiingo_client, logger)
+                if is_closed_day:
+                    logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
+                else:
+                    stock_price_data.collect_and_save_stock_prices(tiingo_client, supabase, all_stocks, logger)
         else:
-            logger.warning("TIINGO_API_KEY가 설정되지 않아 주가 데이터 수집을 건너뜁니다.")
+            raise exceptions.ConfigError("TIINGO_API_KEY 환경 변수가 설정되지 않았습니다.")
 
         # 4. 뉴스 데이터 수집 모듈 실행 (비동기)
         await news_data.collect_and_save_news_async(supabase, all_stocks, logger)
 
         # 5. 작업 완료 및 메시징 큐에 메시지 삽입
         
-        # 모든 작업이 성공적으로 끝난 후, 큐 모듈을 호출하여 메시지를 보냅니다. (휴장일 제외)
+        # 모든 작업이 성공적으로 끝난 후, 큐 모듈을 호출하여 메시지를 보냅니다. (금일이 휴장일이 아닐경우 예측 수행)
         if not is_closed_day:
             logger.info("모든 데이터 수집 완료. 큐에 완료 메시지를 보냅니다.")
-            
             # queue_manager 모듈의 함수를 호출
             queue_manager.send_completion_message(logger)
         else:
