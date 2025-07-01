@@ -11,13 +11,14 @@ parent_path = os.path.join(base_dir, '..')
 sys.path.append(parent_path)
 import exceptions
 
-pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
+import pytz
+kst_timezone = pytz.timezone('Asia/Seoul')
 
 async def collect_and_save_news_async(supabase, stocks, logger):
     """뉴스 데이터 수집부터 저장까지의 전체 과정을 비동기적으로 실행하는 메인 함수"""
     logger.info("--- 뉴스 데이터 수집 작업 시작 ---")
     
-    end_day = datetime.now()
+    end_day = datetime.now(kst_timezone)
     start_day = end_day
     
     all_news = await _get_news_data_async(stocks, start_day, end_day, logger)
@@ -90,7 +91,7 @@ async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datet
                 except Exception: continue
                 items.append({"published_date": pub_date, "title": _adjust_title_by_length_limit(entry.title), 
                               "original_url": entry.link, "company_name" : query, "view_count" : 0, 
-                              "like_count" : 0, "stock_id" : stock_id, "created_at" : pandas_ts.strftime('%Y-%m-%dT%H:%M:%S%z')})
+                              "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
     except Exception as e:
         logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
     return items

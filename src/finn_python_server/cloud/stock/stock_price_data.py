@@ -9,13 +9,14 @@ parent_path = os.path.join(base_dir, '..')
 sys.path.append(parent_path)
 import exceptions
 
-pandas_ts = pd.Timestamp.now(tz='Asia/Seoul')
+import pytz
+kst_timezone = pytz.timezone('Asia/Seoul')
 
 def collect_and_save_stock_prices(tiingo_client, supabase, stocks, logger):
     """주가 데이터 수집부터 저장까지의 전체 과정을 실행하는 메인 함수"""
     logger.info("--- 주가 데이터 수집 작업 시작 ---")
     
-    end_date = datetime.now()
+    end_date = datetime.now(kst_timezone)
     start_date = end_date - timedelta(days=1)
     
     prices_to_insert = _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, end_date, logger)
@@ -56,7 +57,7 @@ def _stock_price_data_from_tiingo(tiingo_client, supabase, stocks, start_date, e
             for col in numeric_columns: 
                 price_df[col] = pd.to_numeric(price_df[col], errors='coerce').round(4)
             price_df['price_date'] = pd.to_datetime(price_df['price_date']).dt.strftime('%Y-%m-%d')
-            price_df['created_at'] = pandas_ts.strftime('%Y-%m-%dT%H:%M:%S%z')
+            price_df['created_at'] = datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')
             
             required_columns = ['stock_id', 'price_date', 'open_price', 'high_price', 'low_price', 'close_price', 
                                 'adj_close_price', 'change_rate', 'volume', 'created_at']
@@ -122,7 +123,7 @@ def _calculate_change_rate_for_close(today_price, last_day_price):
 def check_is_today_closed_day(tiingo_client, logger):
     
     try:
-        end_date = datetime.now()
+        end_date = datetime.now(kst_timezone)
         start_date = end_date - timedelta(days=1)
         price_df = tiingo_client.get_ticker_price('AAPL', fmt='json', startDate=start_date.strftime('%Y-%m-%d'),
                                             endDate=end_date.strftime('%Y-%m-%d'), frequency='daily')

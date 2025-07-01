@@ -12,6 +12,9 @@ from tiingo import TiingoClient
 import exceptions
 import queue_manager
 from datetime import datetime
+import pytz
+
+kst_timezone = pytz.timezone('Asia/Seoul')
 
 async def handler(ctx, data: io.BytesIO=None):
     logging.basicConfig(level=logging.INFO)
@@ -45,7 +48,7 @@ async def handler(ctx, data: io.BytesIO=None):
         # 3. 주가 데이터 수집 모듈 실행
         if tiingo_api_key:
             tiingo_client = TiingoClient({'session': True, 'api_key': tiingo_api_key})
-            today = datetime.now()
+            today = datetime.now(kst_timezone)
             # 일요일=6, 월요일=0인지 먼저 확인(한국 시간 오전 7시 기준으로, 미국의 해당 날짜(토,일)에는 주가 정보가 없음)
             if today.weekday() == 0 or today.weekday() == 6:
                 logger.info("금일이 휴장일이여서 주가 데이터 수집을 건너뜁니다.")
@@ -75,7 +78,7 @@ async def handler(ctx, data: io.BytesIO=None):
         logger.info("=== 모든 데이터 수집 파이프라인 성공적으로 완료 ===")
         return response.Response(
             ctx, response_data=json.dumps({
-                "created_date" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "created_date" : datetime.now(kst_timezone).strftime("%Y-%m-%d %H:%M:%S"),
                 "status" : "Success",
                 "message" : "주가/뉴스 데이터 수집을 정상적으로 수행하였습니다."
             }),
