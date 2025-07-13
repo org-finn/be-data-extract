@@ -91,7 +91,8 @@ async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datet
                 except Exception: continue
                 items.append({"published_date": pub_date, "title": _adjust_title_by_length_limit(entry.title), 
                               "original_url": entry.link, "company_name" : query, "view_count" : 0, 
-                              "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
+                              "like_count" : 0, "source" : entry.get('source', {}).get('title'), "stock_id" : stock_id, 
+                              "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
     except Exception as e:
         logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
     return items
