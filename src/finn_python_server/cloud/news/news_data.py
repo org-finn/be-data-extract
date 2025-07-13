@@ -33,17 +33,21 @@ async def _get_news_data_async(stocks, start_day, end_day, logger):
     
     tasks = []
     logger.info(f"{len(stocks)}개 주식에 대한 뉴스 동시 수집 시작...")
+
+    # 각 기업(stock)에 대해 독립적인 작업을 생성
     async with aiohttp.ClientSession() as session:
         for stock in stocks:
             query = stock.get('search_keyword')
-            stock_id = stock['id']
-            if not query: continue
-            
-            async def task_with_sem():
-                async with sem:
-                    return await _fetch_news_rss_day_async(logger, session, query, stock_id, start_day, end_day)
+            stock_id = stock.get('id')
+            if not query:
+                continue
 
-            tasks.append(task_with_sem())
+            # _fetch_news_rss_day_async 코루틴을 직접 실행하는 task를 만듦
+            async def task_coro(q, s_id):
+                async with sem:
+                    return await _fetch_news_rss_day_async(logger, session, q, s_id, start_day, end_day)
+            
+            tasks.append(task_coro(query, stock_id))
 
         results = await asyncio.gather(*tasks)
 
