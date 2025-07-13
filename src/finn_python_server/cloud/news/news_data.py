@@ -29,7 +29,7 @@ async def collect_and_save_news_async(supabase, stocks, logger):
 
 
 async def _get_news_data_async(stocks, start_day, end_day, logger):
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(1)
     
     tasks = []
     logger.info(f"{len(stocks)}개 주식에 대한 뉴스 동시 수집 시작...")
