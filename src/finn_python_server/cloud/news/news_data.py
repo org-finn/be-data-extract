@@ -19,7 +19,7 @@ async def collect_and_save_news_async(supabase, stocks, logger):
     logger.info("--- 뉴스 데이터 수집 작업 시작 ---")
     
     end_day = datetime.now(kst_timezone)
-    start_day = end_day
+    start_day = end_day - timedelta(days=1)
     
     all_news = await _get_news_data_async(stocks, start_day, end_day, logger)
     if all_news:
@@ -29,7 +29,8 @@ async def collect_and_save_news_async(supabase, stocks, logger):
 
 
 async def _get_news_data_async(stocks, start_day, end_day, logger):
-    # (이전과 동일한 로직, 함수 이름 앞에 _를 붙여 내부용임을 표시)
+    sem = asyncio.Semaphore(5)
+    
     tasks = []
     logger.info(f"{len(stocks)}개 주식에 대한 뉴스 동시 수집 시작...")
     async with aiohttp.ClientSession() as session:
@@ -37,12 +38,13 @@ async def _get_news_data_async(stocks, start_day, end_day, logger):
             query = stock.get('search_keyword')
             stock_id = stock['id']
             if not query: continue
-            total_days = (end_day - start_day).days + 1
-            for i in range(total_days):
-                current_day = start_day + timedelta(days=i)
-                task = _fetch_news_rss_day_async(logger, session, query, stock_id, current_day)
-                tasks.append(task)
-        
+            
+            async def task_with_sem():
+                async with sem:
+                    return await _fetch_news_rss_day_async(logger, session, query, stock_id, start_day, end_day)
+
+            tasks.append(task_with_sem())
+
         results = await asyncio.gather(*tasks)
 
     all_news = [item for sublist in results for item in sublist]
@@ -74,9 +76,9 @@ def _generate_google_rss_url(query, start_date, end_date):
 def _adjust_title_by_length_limit(title):
     return (title[:97] + '...') if len(title) > 100 else title
 
-async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datetime, limit: int = 30):
-    start_date = day.strftime("%Y-%m-%d")
-    end_date = (day + timedelta(days=1)).strftime("%Y-%m-%d")
+async def _fetch_news_rss_day_async(logger, session, query, stock_id, start_day: datetime, end_day: datetime, limit: int = 30):
+    start_date = start_day.strftime("%Y-%m-%d")
+    end_date = end_day.strftime("%Y-%m-%d")
     url = _generate_google_rss_url(query, start_date, end_date)
     items = []
     try:
@@ -91,9 +93,10 @@ async def _fetch_news_rss_day_async(logger, session, query, stock_id, day: datet
                 except Exception: continue
                 items.append({"published_date": pub_date, "title": _adjust_title_by_length_limit(entry.title), 
                               "original_url": entry.link, "company_name" : query, "view_count" : 0, 
-                              "like_count" : 0, "stock_id" : stock_id, "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
+                              "like_count" : 0, "source" : entry.get('source', {}).get('title'), "stock_id" : stock_id, 
+                              "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
     except Exception as e:
-        logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
+        logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Period: {start_date}~{end_date}): {e}")
     return items
 
 def _remove_duplicate_titles_by_prefix(all_news, prefix_length=50):
