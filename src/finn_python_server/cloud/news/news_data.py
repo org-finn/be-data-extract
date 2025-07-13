@@ -19,7 +19,7 @@ async def collect_and_save_news_async(supabase, stocks, logger):
     logger.info("--- 뉴스 데이터 수집 작업 시작 ---")
     
     end_day = datetime.now(kst_timezone)
-    start_day = end_day
+    start_day = end_day - timedelta(days=1)
     
     all_news = await _get_news_data_async(stocks, start_day, end_day, logger)
     if all_news:
@@ -96,7 +96,7 @@ async def _fetch_news_rss_day_async(logger, session, query, stock_id, start_day:
                               "like_count" : 0, "source" : entry.get('source', {}).get('title'), "stock_id" : stock_id, 
                               "created_at" : datetime.now(kst_timezone).strftime('%Y-%m-%dT%H:%M:%S%z')})
     except Exception as e:
-        logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Day: {day.strftime('%Y-%m-%d')}): {e}")
+        logger.warning(f"뉴스 피드 파싱/처리 중 개별 오류 발생 (Query: {query}, Period: {start_date}~{end_date}): {e}")
     return items
 
 def _remove_duplicate_titles_by_prefix(all_news, prefix_length=50):
